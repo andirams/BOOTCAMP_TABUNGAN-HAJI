@@ -28,6 +28,8 @@ app.get("/health", (req, res) => {
 
 app.use("/api/v1/nasabah", nasabahRoutes);
 app.use("/api/v1/tabungan", tabunganRoutes);
+// Alias matching spec endpoint POST /api/v1/tabungan-haji/:id/setor.
+app.use("/api/v1/tabungan-haji", tabunganRoutes);
 app.use("/api/v1/transaksi", transaksiRoutes);
 
 app.listen(port, () => {

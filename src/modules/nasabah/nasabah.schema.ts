@@ -21,5 +21,7 @@ export const CreateNasabahSchema = z.object({
 // NIK tidak boleh diubah (identitas kependudukan); field lain opsional.
 export const UpdateNasabahSchema = CreateNasabahSchema.omit({ nik: true }).partial();
 
+export const IdParamSchema = z.string().uuid("ID nasabah harus berupa UUID yang valid");
+
 export type CreateNasabahInput = z.infer<typeof CreateNasabahSchema>;
 export type UpdateNasabahInput = z.infer<typeof UpdateNasabahSchema>;

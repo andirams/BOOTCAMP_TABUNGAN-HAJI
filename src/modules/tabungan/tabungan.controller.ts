@@ -1,7 +1,21 @@
 import type { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
-import { CreateTabunganSchema, UpdateStatusSchema } from './tabungan.schema';
-import { tabunganService } from './tabungan.service';
+import {
+    CreateTabunganSchema,
+    SetorQrisSchema,
+    TabunganIdParamSchema,
+    UpdateStatusSchema,
+} from './tabungan.schema';
+import {
+    tabunganService,
+    QrisSaldoKurangError,
+    IdempotencyKeyConflictError,
+} from './tabungan.service';
+import {
+    TabunganNotFoundError,
+    TabunganNotActiveError,
+    transaksiService,
+} from '../transaksi/transaksi.service';
 
 export const tabunganController = {
     async create(req: Request, res: Response) {
@@ -66,6 +80,106 @@ export const tabunganController = {
             });
         }
         return res.status(200).json(tabungan);
+    },
+
+    async getMutasi(req: Request, res: Response) {
+        const idParsed = TabunganIdParamSchema.safeParse(req.params.id);
+        if (!idParsed.success) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                message: 'Format ID tabungan tidak valid',
+            });
+        }
+
+        const tabungan = await tabunganService.findById(idParsed.data);
+        if (!tabungan) {
+            return res.status(404).json({
+                error: 'NOT_FOUND',
+                message: 'Tabungan tidak ditemukan',
+            });
+        }
+
+        const mutasi = await transaksiService.findByTabungan(idParsed.data);
+
+        return res.status(200).json({
+            tabungan: {
+                id: tabungan.id,
+                nomorRekening: tabungan.nomorRekening,
+                status: tabungan.status,
+                saldo: tabungan.saldo,
+                nasabah: tabungan.nasabah,
+            },
+            total: mutasi.length,
+            mutasi,
+        });
+    },
+
+    async setorQris(req: Request, res: Response) {
+        const idempotencyKey = req.header('Idempotency-Key');
+        if (!idempotencyKey || idempotencyKey.trim() === '') {
+            return res.status(400).json({
+                error: 'MISSING_IDEMPOTENCY_KEY',
+                message: 'Header Idempotency-Key wajib diisi',
+            });
+        }
+
+        const idParsed = TabunganIdParamSchema.safeParse(req.params.id);
+        if (!idParsed.success) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                message: 'Format ID tabungan tidak valid',
+            });
+        }
+
+        const bodyParsed = SetorQrisSchema.safeParse(req.body);
+        if (!bodyParsed.success) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                details: bodyParsed.error.flatten().fieldErrors,
+            });
+        }
+
+        try {
+            const { transaksi, replay } = await tabunganService.setorQris({
+                tabunganId: idParsed.data,
+                idempotencyKey,
+                data: bodyParsed.data,
+            });
+            return res.status(replay ? 200 : 201).json({
+                success: true,
+                replay,
+                message: replay
+                    ? 'Transaksi sudah pernah diproses (replay aman)'
+                    : 'Setoran QRIS berhasil',
+                data: transaksi,
+            });
+        } catch (err) {
+            if (err instanceof TabunganNotFoundError) {
+                return res.status(404).json({
+                    error: 'NOT_FOUND',
+                    message: 'Tabungan tidak ditemukan',
+                });
+            }
+            if (err instanceof TabunganNotActiveError) {
+                return res.status(409).json({
+                    error: 'TABUNGAN_NOT_ACTIVE',
+                    message: `Tabungan berstatus ${err.status}, transaksi ditolak`,
+                });
+            }
+            if (err instanceof QrisSaldoKurangError) {
+                return res.status(402).json({
+                    error: 'QRIS_SALDO_KURANG',
+                    message: 'Saldo sumber QRIS nasabah tidak mencukupi',
+                });
+            }
+            if (err instanceof IdempotencyKeyConflictError) {
+                return res.status(409).json({
+                    error: 'IDEMPOTENCY_KEY_CONFLICT',
+                    message: 'Idempotency-Key sudah dipakai untuk request berbeda',
+                });
+            }
+            throw err;
+        }
     },
 
     async updateStatus(req: Request, res: Response) {

@@ -8,3 +8,5 @@ tabunganRoutes.get("/", tabunganController.findAll);
 tabunganRoutes.get("/:id", tabunganController.findById);
 tabunganRoutes.get("/nomor/:nomor", tabunganController.findByNomorRekening);
 tabunganRoutes.patch("/:id/status", tabunganController.updateStatus);
+tabunganRoutes.post("/:id/setor", tabunganController.setorQris);
+tabunganRoutes.get("/:id/mutasi", tabunganController.getMutasi);
