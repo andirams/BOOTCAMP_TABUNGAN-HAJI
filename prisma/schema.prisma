@@ -13,6 +13,7 @@ model Nasabah {
   nama         String         @db.VarChar(100)
   email        String         @unique @db.VarChar(150)
   nomorHp      String         @map("nomor_hp") @db.VarChar(20)
+  password     String?        @db.VarChar(255)
   tabungan     TabunganHaji[]
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")

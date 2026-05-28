@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx prisma *)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, StartTime, @{N='CmdLine';E={\\(Get-CimInstance Win32_Process -Filter \"ProcessId=$\\($_.Id\\)\"\\).CommandLine}})",
+      "Bash(node -e \"for \\(const p of ['jsonwebtoken','@types/jsonwebtoken','bcrypt','@types/bcrypt']\\) { try { require.resolve\\(p + '/package.json'\\); console.log\\('FOUND', p\\); } catch { console.log\\('MISSING', p\\); } }\")",
+      "Bash(node -e \"for \\(const p of ['jsonwebtoken','bcrypt']\\) { const pj = require\\(p + '/package.json'\\); console.log\\(p, '-> types:', pj.types || pj.typings || 'NONE'\\); }\")",
+      "Bash(npm install *)"
     ]
   }
 }

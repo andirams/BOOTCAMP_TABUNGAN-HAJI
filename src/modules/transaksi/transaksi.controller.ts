@@ -1,11 +1,13 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { SetorSchema, TarikSchema } from './transaksi.schema';
+import { SetorSchema, TarikSchema, SetorQrisSchema, TabunganIdParamSchema } from './transaksi.schema';
 import {
     transaksiService,
     TabunganNotFoundError,
     TabunganNotActiveError,
     SaldoTidakCukupError,
+    QrisSaldoKurangError,
+    IdempotencyKeyConflictError,
 } from './transaksi.service';
 
 const handleMutasiError = (err: unknown, res: Response) => {
@@ -25,6 +27,18 @@ const handleMutasiError = (err: unknown, res: Response) => {
         return res.status(409).json({
             error: 'SALDO_TIDAK_CUKUP',
             message: 'Saldo tidak mencukupi untuk penarikan',
+        });
+    }
+    if (err instanceof QrisSaldoKurangError) {
+        return res.status(402).json({
+            error: 'QRIS_SALDO_KURANG',
+            message: 'Saldo sumber QRIS nasabah tidak mencukupi',
+        });
+    }
+    if (err instanceof IdempotencyKeyConflictError) {
+        return res.status(409).json({
+            error: 'IDEMPOTENCY_KEY_CONFLICT',
+            message: 'Idempotency-Key sudah dipakai untuk request berbeda',
         });
     }
     return null;
@@ -60,6 +74,52 @@ export const transaksiController = {
 
     tarik: (req: Request, res: Response) =>
         runMutasi(req, res, TarikSchema, transaksiService.tarik),
+
+    async setorQris(req: Request, res: Response) {
+        const idempotencyKey = req.header('Idempotency-Key');
+        if (!idempotencyKey || idempotencyKey.trim() === '') {
+            return res.status(400).json({
+                error: 'MISSING_IDEMPOTENCY_KEY',
+                message: 'Header Idempotency-Key wajib diisi',
+            });
+        }
+
+        const idParsed = TabunganIdParamSchema.safeParse(req.params.tabunganId);
+        if (!idParsed.success) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                message: 'Format ID tabungan tidak valid',
+            });
+        }
+
+        const bodyParsed = SetorQrisSchema.safeParse(req.body);
+        if (!bodyParsed.success) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                details: bodyParsed.error.flatten().fieldErrors,
+            });
+        }
+
+        try {
+            const { transaksi, replay } = await transaksiService.setorQris({
+                tabunganId: idParsed.data,
+                idempotencyKey,
+                data: bodyParsed.data,
+            });
+            return res.status(replay ? 200 : 201).json({
+                success: true,
+                replay,
+                message: replay
+                    ? 'Transaksi sudah pernah diproses (replay aman)'
+                    : 'Setoran QRIS berhasil',
+                data: transaksi,
+            });
+        } catch (err) {
+            const handled = handleMutasiError(err, res);
+            if (handled) return handled;
+            throw err;
+        }
+    },
 
     async findByTabungan(req: Request, res: Response) {
         const data = await transaksiService.findByTabungan(req.params.tabunganId as string);

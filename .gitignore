@@ -1,4 +1,8 @@
 node_modules
+
+# Build output (hasil kompilasi tsc, bisa di-generate ulang dari src)
+dist
+
 # Keep environment variables out of version control
 .env
 
