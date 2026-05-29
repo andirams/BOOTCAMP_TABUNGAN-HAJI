@@ -1,9 +1,8 @@
 import type { Request, Response } from "express";
 import { LoginSchema, RegisterSchema } from "./auth.schema";
 import {
-    AlreadyRegisteredError,
+    DuplicateError,
     InvalidCredentialsError,
-    NasabahNotFoundError,
     authService,
 } from "./auth.service";
 import { nasabahService } from "../nasabah/nasabah.service";
@@ -20,22 +19,16 @@ export const authController = {
 
         try {
             const nasabah = await authService.register(parsed.data);
-            return res.status(200).json({
+            return res.status(201).json({
                 success: true,
                 message: "Registrasi berhasil, silakan login",
                 nasabah,
             });
         } catch (err) {
-            if (err instanceof NasabahNotFoundError) {
-                return res.status(404).json({
-                    error: "NOT_FOUND",
-                    message: "Nasabah dengan email tersebut tidak ditemukan",
-                });
-            }
-            if (err instanceof AlreadyRegisteredError) {
+            if (err instanceof DuplicateError) {
                 return res.status(409).json({
-                    error: "ALREADY_REGISTERED",
-                    message: "Email ini sudah memiliki password, silakan login",
+                    error: "DUPLICATE_ENTRY",
+                    message: err.message,
                 });
             }
             throw err;

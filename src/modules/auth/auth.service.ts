@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { signToken } from "../../lib/jwt";
 import { revoke } from "../../lib/tokenDenylist";
@@ -7,31 +8,43 @@ import type { LoginInput, RegisterInput } from "./auth.schema";
 const SALT_ROUNDS = 10;
 
 // Sentinel errors agar controller bisa mapping HTTP status tanpa string-matching.
-export class NasabahNotFoundError extends Error {
-    constructor() { super("NASABAH_NOT_FOUND"); }
-}
-export class AlreadyRegisteredError extends Error {
-    constructor() { super("ALREADY_REGISTERED"); }
+export class DuplicateError extends Error {
+    constructor(message: string) { super(message); }
 }
 export class InvalidCredentialsError extends Error {
     constructor() { super("INVALID_CREDENTIALS"); }
 }
 
 export const authService = {
+    // Self-registration: buat nasabah baru sekaligus set password (publik, tanpa token).
     async register(input: RegisterInput) {
-        const nasabah = await prisma.nasabah.findUnique({
-            where: { email: input.email },
-        });
-        if (!nasabah) throw new NasabahNotFoundError();
-        if (nasabah.password) throw new AlreadyRegisteredError();
-
         const hashed = await bcrypt.hash(input.password, SALT_ROUNDS);
-        await prisma.nasabah.update({
-            where: { id: nasabah.id },
-            data: { password: hashed },
-        });
-
-        return { id: nasabah.id, nama: nasabah.nama, email: nasabah.email };
+        try {
+            const nasabah = await prisma.nasabah.create({
+                data: {
+                    nik: input.nik,
+                    nama: input.nama,
+                    email: input.email,
+                    nomorHp: input.nomorHp,
+                    password: hashed,
+                },
+            });
+            return { id: nasabah.id, nama: nasabah.nama, email: nasabah.email };
+        } catch (err) {
+            if (
+                err instanceof Prisma.PrismaClientKnownRequestError &&
+                err.code === "P2002"
+            ) {
+                const target = (err.meta?.target as string[] | undefined)?.join(", ") ?? "";
+                const field = target.includes("nik")
+                    ? "NIK"
+                    : target.includes("email")
+                        ? "Email"
+                        : "Data";
+                throw new DuplicateError(`${field} sudah terdaftar`);
+            }
+            throw err;
+        }
     },
 
     async login(input: LoginInput) {
