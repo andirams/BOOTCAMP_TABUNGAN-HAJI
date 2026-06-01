@@ -34,7 +34,9 @@ export const laporanController = {
         }
         const { bulan, tahun } = parsed.data;
 
-        const transaksi = await laporanService.transaksiBulanan(bulan, tahun);
+        // requireAuth menjamin req.user terisi; laporan dibatasi ke nasabah ini.
+        const nasabahId = req.user!.id;
+        const transaksi = await laporanService.transaksiBulanan(bulan, tahun, nasabahId);
 
         const rows = transaksi.map((t) => [
             t.waktu.toISOString(),
